@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="bugreport-ext/icons/icon128.png" alt="BugShot Logo" width="96" />
+  <img src="icons/icon128.png" alt="BugShot Logo" width="96" />
 </p>
 
 <h1 align="center">BugShot</h1>
