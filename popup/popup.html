@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BugShot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- STEP 1: Capture -->
+    <div id="step-capture" class="step active">
+      <header>
+        <div class="logo">
+          <span class="logo-icon">◉</span>
+          <span class="logo-text">BugShot</span>
+        </div>
+        <button id="btn-settings" class="icon-btn" title="Settings">⚙</button>
+      </header>
+
+      <div class="capture-zone">
+        <div id="preview-placeholder" class="preview-placeholder">
+          <span class="cam-icon">⬡</span>
+          <p>No screenshot yet</p>
+        </div>
+        <canvas id="screenshot-canvas" style="display:none;"></canvas>
+        <!-- Crop overlay -->
+        <div id="crop-overlay" style="display:none;">
+          <div id="crop-box"></div>
+          <div id="crop-hint">Drag to select area · Double-click to confirm</div>
+        </div>
+      </div>
+
+      <div class="tool-row" id="annotation-tools" style="display:none;">
+        <button class="tool-btn active" data-tool="pen" title="Draw">✏</button>
+        <button class="tool-btn" data-tool="rect" title="Rectangle">▭</button>
+        <button class="tool-btn" data-tool="arrow" title="Arrow">↗</button>
+        <button class="tool-btn" data-tool="text" title="Text">T</button>
+        <button class="tool-btn" id="btn-crop-mode" title="Crop">⊡</button>
+        <div class="color-row">
+          <button class="color-dot active" data-color="#FF3B3B" style="background:#FF3B3B;"></button>
+          <button class="color-dot" data-color="#FFB800" style="background:#FFB800;"></button>
+          <button class="color-dot" data-color="#00D2FF" style="background:#00D2FF;"></button>
+          <button class="color-dot" data-color="#FFFFFF" style="background:#FFFFFF;border:1px solid #555;"></button>
+        </div>
+        <button class="tool-btn danger" id="btn-undo" title="Undo">↩</button>
+        <button class="tool-btn danger" id="btn-clear" title="Clear">✕</button>
+      </div>
+
+      <div class="action-row capture-actions">
+        <button id="btn-capture" class="btn-primary">
+          <span class="btn-icon">⬡</span> Capture Viewport
+        </button>
+        <button id="btn-capture-full" class="btn-secondary" title="Capture full page by scrolling">
+          Full Page
+        </button>
+      </div>
+
+      <!-- Console screenshot slot -->
+      <div id="console-capture-area" style="display:none;">
+        <div class="console-header">
+          <span class="console-label">◉ Console Screenshot</span>
+          <div class="console-actions">
+            <button id="btn-capture-console" class="btn-tag">+ Capture</button>
+            <button id="btn-remove-console" class="btn-tag danger" style="display:none;">✕ Remove</button>
+          </div>
+        </div>
+        <canvas id="console-canvas" style="display:none;"></canvas>
+        <div id="console-placeholder" class="console-placeholder">
+          Click Capture, then switch to DevTools Console (3s delay)
+        </div>
+      </div>
+
+      <button id="btn-next" class="btn-secondary btn-next" style="display:none;">
+        Continue → Fill Report
+      </button>
+    </div>
+
+    <!-- STEP 2: Report Details -->
+    <div id="step-report" class="step">
+      <header>
+        <button id="btn-back" class="icon-btn">←</button>
+        <span class="step-label">Bug Report</span>
+        <div class="target-badge" id="target-badge">GitHub</div>
+      </header>
+
+      <div class="form-area">
+        <label>Title</label>
+        <input type="text" id="bug-title" placeholder="Short description of the bug" />
+
+        <label>Steps to Reproduce <span class="label-hint" id="steps-hint"></span></label>
+        <textarea id="bug-steps" placeholder="1. Go to...&#10;2. Click on...&#10;3. See error"></textarea>
+
+        <label>Expected Behavior</label>
+        <textarea id="bug-expected" placeholder="What should have happened?"></textarea>
+
+        <label>Actual Behavior</label>
+        <textarea id="bug-actual" placeholder="What actually happened?"></textarea>
+
+        <div class="meta-box">
+          <div class="meta-title">Auto-collected metadata</div>
+          <div id="meta-display" class="meta-content">Loading...</div>
+        </div>
+
+        <!-- Console errors section -->
+        <div id="errors-box" class="meta-box" style="display:none;">
+          <div class="meta-title error-title">Console Errors</div>
+          <div id="errors-display" class="meta-content"></div>
+        </div>
+
+        <!-- Network failures section -->
+        <div id="network-box" class="meta-box" style="display:none;">
+          <div class="meta-title network-title">Network Failures</div>
+          <div id="network-display" class="meta-content"></div>
+        </div>
+
+        <label>Severity</label>
+        <div class="severity-row">
+          <button class="sev-btn" data-sev="low">Low</button>
+          <button class="sev-btn active" data-sev="medium">Medium</button>
+          <button class="sev-btn" data-sev="high">High</button>
+          <button class="sev-btn" data-sev="critical">Critical 🔥</button>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button id="btn-submit-github" class="btn-primary" data-target="github">
+          Submit to GitHub
+        </button>
+        <button id="btn-copy-markdown" class="btn-secondary">
+          Copy Markdown
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Settings -->
+    <div id="step-settings" class="step">
+      <header>
+        <button id="btn-settings-back" class="icon-btn">←</button>
+        <span class="step-label">Settings</span>
+      </header>
+      <div class="form-area">
+        <label>GitHub Personal Access Token</label>
+        <input type="password" id="gh-token" placeholder="ghp_..." />
+
+        <label>GitHub Owner / Org</label>
+        <input type="text" id="gh-owner" placeholder="your-username-or-org" />
+
+        <label>GitHub Repository</label>
+        <input type="text" id="gh-repo" placeholder="repo-name" />
+
+        <div class="info-box">
+          Token needs <code>repo</code> scope to create issues and upload screenshots.
+        </div>
+      </div>
+      <div class="action-row">
+        <button id="btn-save-settings" class="btn-primary">Save Settings</button>
+      </div>
+      <div id="settings-status" class="status-msg"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

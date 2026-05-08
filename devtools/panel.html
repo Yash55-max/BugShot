@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f10;
+      color: #e8e8ec;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+    }
+    h2 {
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .section { margin-bottom: 24px; }
+    .entry {
+      background: #1a1a1d;
+      border: 1px solid #2e2e34;
+      border-radius: 4px;
+      padding: 7px 10px;
+      margin-bottom: 6px;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .entry.error  { border-left: 3px solid #FF3B3B; color: #FF8080; }
+    .entry.warn   { border-left: 3px solid #FFB800; color: #FFD860; }
+    .entry.net4xx { border-left: 3px solid #FFB800; color: #FFD860; }
+    .entry.net5xx { border-left: 3px solid #FF3B3B; color: #FF8080; }
+    .empty { color: #555; font-family: monospace; font-size: 11px; }
+    .btn-file {
+      background: #FF3B3B;
+      border: none;
+      color: #fff;
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn-file:hover { background: #e52e2e; }
+    .status { font-family: monospace; font-size: 10px; color: #00C566; margin-top: 8px; }
+    .ts { color: #555; font-size: 10px; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="section">
+    <h2>Console Errors &amp; Warnings</h2>
+    <div id="console-list"><span class="empty">No errors captured yet.</span></div>
+  </div>
+
+  <div class="section">
+    <h2>Network Failures (4xx / 5xx)</h2>
+    <div id="network-list"><span class="empty">No network failures captured yet.</span></div>
+  </div>
+
+  <button class="btn-file" id="btn-file">⬡ File Bug Report with this Data</button>
+  <div class="status" id="status"></div>
+
+  <script src="panel.js"></script>
+</body>
+</html>
