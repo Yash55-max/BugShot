@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BugShot — Screenshot to Bug Report</title>
+    <meta name="description" content="Capture, annotate, and file bug reports to GitHub in one click. The ultimate tool for QA and developers.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #ffffff;
+            --surface: #f8fafc;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --radius: 12px;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --header-bg: rgba(255, 255, 255, 0.8);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #020617;
+                --surface: #0f172a;
+                --text-main: #f8fafc;
+                --text-muted: #94a3b8;
+                --border: #1e293b;
+                --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+                --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+                --header-bg: rgba(2, 6, 23, 0.8);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Header */
+        header {
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--header-bg);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--text-main);
+            text-decoration: none;
+        }
+
+        .logo img {
+            width: 32px;
+            height: 32px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-muted);
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 5rem 0;
+            text-align: center;
+            background: radial-gradient(circle at top right, var(--surface) 0%, var(--bg) 100%);
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            margin-bottom: 1.5rem;
+            line-height: 1.1;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+        }
+
+        .cta-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius);
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            box-shadow: var(--shadow);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--surface);
+        }
+
+        /* Features Section */
+        .section-title {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-title h2 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .features {
+            padding: 5rem 0;
+            background-color: var(--surface);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg);
+            padding: 2rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--surface);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .feature-card h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.25rem;
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Screenshots Section */
+        .screenshots {
+            padding: 5rem 0;
+        }
+
+        .screenshot-gallery {
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+        }
+
+        .screenshot-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .screenshot-item:nth-child(even) {
+            direction: rtl;
+        }
+
+        .screenshot-item:nth-child(even) .text-content {
+            direction: ltr;
+        }
+
+        .screenshot-img-container {
+            border-radius: var(--radius);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            background: var(--surface);
+        }
+
+        .screenshot-img-container img {
+            width: 100%;
+            display: block;
+            transition: transform 0.3s;
+        }
+
+        .screenshot-img-container:hover img {
+            transform: scale(1.02);
+        }
+
+        .text-content h3 {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .text-content p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: var(--surface);
+            color: var(--text-muted);
+            border-radius: 99px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 0.75rem;
+            border: 1px solid var(--border);
+        }
+
+        /* Footer */
+        footer {
+            padding: 4rem 0;
+            border-top: 1px solid var(--border);
+            background-color: var(--surface);
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+
+        .footer-brand p {
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            max-width: 300px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 4rem;
+        }
+
+        .link-group h4 {
+            margin-bottom: 1.25rem;
+            font-size: 1rem;
+        }
+
+        .link-group ul {
+            list-style: none;
+        }
+
+        .link-group li {
+            margin-bottom: 0.75rem;
+        }
+
+        .link-group a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .link-group a:hover {
+            color: var(--primary);
+        }
+
+        .copyright {
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .screenshot-item { grid-template-columns: 1fr; gap: 1.5rem; }
+            .nav-links { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">
+                    <img src="icons/icon128.png" alt="BugShot">
+                    BugShot
+                </a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#screenshots">Screenshots</a>
+                    <a href="https://github.com/Yash55-max/BugShot/blob/main/PRIVACY.MD">Privacy Policy</a>
+                    <a href="https://github.com/Yash55-max/BugShot">GitHub</a>
+                </div>
+                <a href="https://github.com/Yash55-max/BugShot" class="btn btn-primary">Download</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="badge">Manifest V3 Extension</div>
+                <h1>Screenshot to Bug Report <br> in One Click.</h1>
+                <p>The ultimate browser extension for QA teams and developers to capture, annotate, and file GitHub issues without leaving the page.</p>
+                <div class="cta-group">
+                    <a href="https://github.com/Yash55-max/BugShot" class="btn btn-primary">
+                        Get Started on GitHub
+                    </a>
+                    <a href="https://github.com/Yash55-max/BugShot/blob/main/PRIVACY.MD" class="btn btn-outline">
+                        Read Privacy Policy
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section id="features" class="features">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Everything you need for rapid reporting</h2>
+                    <p>Stop wasting time with tab-switching and manual metadata entry.</p>
+                </div>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        </div>
+                        <h3>Smart Capture</h3>
+                        <p>Viewport capture, full-page scrolling capture, and region-based cropping. High resolution, stitched automatically.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        </div>
+                        <h3>Annotation Suite</h3>
+                        <p>Draw arrows, rectangles, and text notes directly on your screenshots. Multiple colors and instant undo/redo.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </div>
+                        <h3>Auto-Metadata</h3>
+                        <p>Automatically attaches OS, browser version, URL, screen resolution, and last 20 user interactions.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        </div>
+                        <h3>DevTools Panel</h3>
+                        <p>A native panel inside Chrome/Edge DevTools to monitor live console errors and network failures.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                        </div>
+                        <h3>GitHub Integration</h3>
+                        <p>Direct integration with GitHub Issues. Uploads images to your repo and creates structured Markdown reports.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        </div>
+                        <h3>Privacy First</h3>
+                        <p>No backend servers. Your GitHub tokens and data stay locally in your browser. Total control.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="screenshots" class="screenshots">
+            <div class="container">
+                <div class="section-title">
+                    <h2>See BugShot in action</h2>
+                </div>
+                <div class="screenshot-gallery">
+                    <div class="screenshot-item">
+                        <div class="screenshot-img-container">
+                            <img src="screenshots/Screenshot 2026-05-08 165902.png" alt="Annotation Interface">
+                        </div>
+                        <div class="text-content">
+                            <h3>Capture & Annotate</h3>
+                            <p>Use the integrated drawing suite to highlight issues. Support for rectangles, arrows, and text notes with built-in cropping.</p>
+                            <ul style="color: var(--text-muted); padding-left: 1.25rem;">
+                                <li>Four professional colors</li>
+                                <li>Stroke-based history control</li>
+                                <li>Zero-delay rendering</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="screenshot-item">
+                        <div class="screenshot-img-container">
+                            <img src="screenshots/Screenshot 2026-05-08 165957.png" alt="Bug Report Form">
+                        </div>
+                        <div class="text-content">
+                            <h3>Structured Reporting</h3>
+                            <p>The extension automatically populates environment metadata, recorded steps, and console logs into a clean, searchable form.</p>
+                            <ul style="color: var(--text-muted); padding-left: 1.25rem;">
+                                <li>Automated "Steps to Reproduce"</li>
+                                <li>Responsive markdown inputs</li>
+                                <li>Persisted drafts</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="screenshot-item">
+                        <div class="screenshot-img-container">
+                            <img src="screenshots/Screenshot 2026-05-08 165839.png" alt="DevTools Panel">
+                        </div>
+                        <div class="text-content">
+                            <h3>DevTools Integration</h3>
+                            <p>Monitor live errors and network failures directly within your developer workflow. Sync logs to your report with one click.</p>
+                            <ul style="color: var(--text-muted); padding-left: 1.25rem;">
+                                <li>Real-time console interception</li>
+                                <li>Background data sync</li>
+                                <li>Native DevTools look and feel</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="screenshot-item">
+                        <div class="screenshot-img-container">
+                            <img src="screenshots/screencapture-github-Yash55-max-PathDiverge-issues-3-2026-05-08-17_56_58.png" alt="GitHub Issue Result">
+                        </div>
+                        <div class="text-content">
+                            <h3>The Perfect Result</h3>
+                            <p>Beautifully formatted GitHub issues with embedded screenshots, severity tags, and technical tables. Help your developers fix bugs faster.</p>
+                            <ul style="color: var(--text-muted); padding-left: 1.25rem;">
+                                <li>Standardized layout</li>
+                                <li>Embedded environment tables</li>
+                                <li>Repository-linked screenshots</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <a href="#" class="logo">
+                        <img src="icons/icon128.png" alt="BugShot">
+                        BugShot
+                    </a>
+                    <p>Professional bug reporting for the modern web developer.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Resources</h4>
+                        <ul>
+                            <li><a href="https://github.com/Yash55-max/BugShot">Codebase</a></li>
+                            <li><a href="https://github.com/Yash55-max/BugShot/blob/main/README.MD">Documentation</a></li>
+                            <li><a href="https://github.com/Yash55-max/BugShot/blob/main/PRIVACY.MD">Privacy Policy</a></li>
+                        </ul>
+                    </div>
+                    <div class="link-group">
+                        <h4>Support</h4>
+                        <ul>
+                            <li><a href="https://github.com/Yash55-max/BugShot/issues">Report an Issue</a></li>
+                            <li><a href="https://github.com/Yash55-max/BugShot">GitHub Discussions</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="copyright">
+                &copy; 2026 Yash55-max. Released under the MIT License.
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
