@@ -53,22 +53,37 @@ function initAutoResize() {
 // ─── System Info ──────────────────────────────────────────────────────────────
 async function fetchSystemInfo() {
   return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs[0]) return resolve();
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_SYSTEM_INFO' }, (info) => {
-        if (chrome.runtime.lastError || !info) {
-          systemInfo = {
-            url: tabs[0].url, title: tabs[0].title,
-            userAgent: navigator.userAgent,
-            screenResolution: `${screen.width}x${screen.height}`,
-            viewportSize: 'unknown', platform: navigator.platform,
-            language: navigator.language, timestamp: new Date().toISOString(),
-            steps: [], errors: [], network: []
-          };
-        } else {
-          systemInfo = info;
+    chrome.runtime.sendMessage({ type: 'GET_TAB_INFO' }, (tabInfo) => {
+      const fallbackBase = {
+        url: tabInfo?.url || location.href,
+        title: tabInfo?.title || document.title,
+        userAgent: navigator.userAgent,
+        screenResolution: `${screen.width}x${screen.height}`,
+        viewportSize: 'unknown',
+        platform: navigator.platform,
+        language: navigator.language,
+        timestamp: new Date().toISOString(),
+        steps: [],
+        errors: [],
+        network: []
+      };
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs[0];
+        if (!activeTab?.id) {
+          systemInfo = fallbackBase;
+          resolve();
+          return;
         }
-        resolve();
+
+        chrome.tabs.sendMessage(activeTab.id, { type: 'GET_SYSTEM_INFO' }, (info) => {
+          if (chrome.runtime.lastError || !info) {
+            systemInfo = fallbackBase;
+          } else {
+            systemInfo = info;
+          }
+          resolve();
+        });
       });
     });
   });
@@ -95,12 +110,18 @@ function bindCapture() {
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]) { btn.disabled = false; btn.textContent = 'Full Page'; return; }
-      chrome.runtime.sendMessage({ type: 'CAPTURE_FULL_PAGE', tabId: tabs[0].id }, (res) => {
-        btn.disabled = false;
-        btn.textContent = 'Full Page';
-        if (!res?.success) { showToast('Full capture failed: ' + (res?.error || 'unknown'), 'error'); return; }
-        stitchTiles(res.tiles, res.pageHeight, res.viewportHeight);
-      });
+
+      captureFullPageLocally(tabs[0].id)
+        .then((dataUrl) => {
+          btn.disabled = false;
+          btn.textContent = 'Full Page';
+          loadScreenshotToCanvas(dataUrl);
+        })
+        .catch((err) => {
+          btn.disabled = false;
+          btn.textContent = 'Full Page';
+          showToast('Full capture failed: ' + (err?.message || err || 'unknown'), 'error');
+        });
     });
   });
 
@@ -141,6 +162,97 @@ function stitchTiles(tiles, pageHeight, viewportHeight) {
     });
   };
   firstImg.src = tiles[0].dataUrl;
+}
+
+async function captureFullPageLocally(tabId) {
+  const scrollInfo = await evalInTab(tabId, () => ({
+    scrollY: window.scrollY,
+    pageHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight
+  }));
+
+  const originalScrollY = scrollInfo?.scrollY || 0;
+  const pageHeight = scrollInfo?.pageHeight || 0;
+  const viewportHeight = scrollInfo?.viewportHeight || 0;
+  if (!pageHeight || !viewportHeight) throw new Error('Unable to read page dimensions');
+
+  const captureVisibleTab = () => new Promise((resolve, reject) => {
+    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(dataUrl);
+    });
+  });
+
+  const scrollTo = (y) => evalInTab(tabId, (targetY) => {
+    window.scrollTo(0, targetY);
+  }, [y]);
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  let stitchedCanvas = null;
+  let stitchedCtx = null;
+  let tileWidth = 0;
+
+  try {
+    for (let y = 0; y < pageHeight; y += viewportHeight) {
+      await scrollTo(y);
+      await wait(120);
+
+      const dataUrl = await captureVisibleTab();
+      const image = await loadImage(dataUrl);
+
+      if (!stitchedCanvas) {
+        tileWidth = image.width;
+        stitchedCanvas = document.createElement('canvas');
+        stitchedCanvas.width = tileWidth;
+        stitchedCanvas.height = pageHeight;
+        stitchedCtx = stitchedCanvas.getContext('2d');
+      }
+
+      const destY = y;
+      const srcHeight = Math.min(image.height, pageHeight - y);
+      stitchedCtx.drawImage(image, 0, 0, tileWidth, srcHeight, 0, destY, tileWidth, srcHeight);
+
+      await wait(160);
+    }
+
+    if (!stitchedCanvas) throw new Error('No tiles captured');
+    return stitchedCanvas.toDataURL('image/png');
+  } finally {
+    try {
+      await scrollTo(originalScrollY);
+    } catch (restoreErr) {
+      // ignore restoration errors
+    }
+  }
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load captured image'));
+    image.src = dataUrl;
+  });
+}
+
+function evalInTab(tabId, fn, args = []) {
+  return new Promise((resolve, reject) => {
+    chrome.scripting.executeScript(
+      {
+        target: { tabId },
+        func: fn,
+        args
+      },
+      (results) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(results?.[0]?.result);
+      }
+    );
+  });
 }
 
 function loadScreenshotToCanvas(dataUrl) {
