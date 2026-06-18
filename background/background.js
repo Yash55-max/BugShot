@@ -13,8 +13,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }).catch(() => {}); // silently ignore restricted pages
 });
 
-// In-memory store for devtools data (service worker resets between sessions)
-let storedDevtoolsData = { consoleLogs: [], networkFails: [] };
+// Session storage area for devtools data (survives background service worker suspension)
+const sessionStore = (chrome.storage && chrome.storage.session) ? chrome.storage.session : chrome.storage.local;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'CAPTURE_TAB') {
@@ -36,17 +36,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'STORE_DEVTOOLS_DATA') {
-    storedDevtoolsData = msg.data || { consoleLogs: [], networkFails: [] };
-    sendResponse({ ok: true });
+    const data = msg.data || { consoleLogs: [], networkFails: [] };
+    sessionStore.set({ devtoolsData: data }, () => {
+      sendResponse({ ok: true });
+    });
     return true;
   }
-  if (msg.type === 'GET_DEVTOOLS_DATA') {
-    // Forward to devtools page if available, else return stored
-    sendResponse(storedDevtoolsData);
-    return true;
-  }
-  if (msg.type === 'GET_STORED_DEVTOOLS_DATA') {
-    sendResponse(storedDevtoolsData);
+  if (msg.type === 'GET_DEVTOOLS_DATA' || msg.type === 'GET_STORED_DEVTOOLS_DATA') {
+    sessionStore.get({ devtoolsData: { consoleLogs: [], networkFails: [] } }, (result) => {
+      sendResponse(result.devtoolsData);
+    });
     return true;
   }
 });
@@ -69,6 +68,7 @@ async function captureTab(sendResponse) {
 // Full-page capture: scroll through the page and stitch tiles
 async function captureFullPage(tabId, sendResponse) {
   let originalScrollY = 0;
+  let hasAdjusted = false;
   try {
     // Read scroll info directly from the page so full-page capture does not
     // depend on the content-script message bridge being alive.
@@ -81,6 +81,27 @@ async function captureFullPage(tabId, sendResponse) {
 
     // Save original scroll position
     originalScrollY = scrollInfo.scrollY;
+
+    // Temporarily adjust position of fixed and sticky elements to prevent repetition
+    await evalInTab(tabId, () => {
+      window.__bugshot_adjusted_elements__ = [];
+      const elements = document.querySelectorAll('*');
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        try {
+          const style = window.getComputedStyle(el);
+          if (style.position === 'fixed' || style.position === 'sticky') {
+            window.__bugshot_adjusted_elements__.push({
+              element: el,
+              originalValue: el.style.getPropertyValue('position'),
+              originalPriority: el.style.getPropertyPriority('position')
+            });
+            el.style.setProperty('position', style.position === 'fixed' ? 'absolute' : 'static', 'important');
+          }
+        } catch (e) {}
+      }
+    });
+    hasAdjusted = true;
 
     const tiles = [];
     let y = 0;
@@ -128,14 +149,47 @@ async function captureFullPage(tabId, sendResponse) {
       await new Promise(r => setTimeout(r, 180));
     }
 
-    // Restore original scroll
+    // Restore elements and scroll
+    await evalInTab(tabId, () => {
+      if (window.__bugshot_adjusted_elements__) {
+        for (const item of window.__bugshot_adjusted_elements__) {
+          try {
+            if (item.originalValue) {
+              item.element.style.setProperty('position', item.originalValue, item.originalPriority);
+            } else {
+              item.element.style.removeProperty('position');
+            }
+          } catch (e) {}
+        }
+        delete window.__bugshot_adjusted_elements__;
+      }
+    });
+    hasAdjusted = false;
+
     await evalInTab(tabId, (targetY) => {
       window.scrollTo(0, targetY);
     }, [originalScrollY]);
 
     sendResponse({ success: true, tiles, pageHeight, viewportHeight });
   } catch (err) {
-    // Attempt to restore original scroll position before returning error
+    if (hasAdjusted) {
+      try {
+        await evalInTab(tabId, () => {
+          if (window.__bugshot_adjusted_elements__) {
+            for (const item of window.__bugshot_adjusted_elements__) {
+              try {
+                if (item.originalValue) {
+                  item.element.style.setProperty('position', item.originalValue, item.originalPriority);
+                } else {
+                  item.element.style.removeProperty('position');
+                }
+              } catch (e) {}
+            }
+            delete window.__bugshot_adjusted_elements__;
+          }
+        });
+      } catch (e) {}
+    }
     try {
       if (typeof originalScrollY === 'number') {
         await evalInTab(tabId, (targetY) => {

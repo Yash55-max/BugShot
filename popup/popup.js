@@ -194,6 +194,26 @@ async function captureFullPageLocally(tabId) {
   let tileWidth = 0;
 
   try {
+    // Temporarily adjust position of fixed and sticky elements to prevent repetition
+    await evalInTab(tabId, () => {
+      window.__bugshot_adjusted_elements__ = [];
+      const elements = document.querySelectorAll('*');
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        try {
+          const style = window.getComputedStyle(el);
+          if (style.position === 'fixed' || style.position === 'sticky') {
+            window.__bugshot_adjusted_elements__.push({
+              element: el,
+              originalValue: el.style.getPropertyValue('position'),
+              originalPriority: el.style.getPropertyPriority('position')
+            });
+            el.style.setProperty('position', style.position === 'fixed' ? 'absolute' : 'static', 'important');
+          }
+        } catch (e) {}
+      }
+    });
+
     for (let y = 0; y < pageHeight; y += viewportHeight) {
       await scrollTo(y);
       await wait(120);
@@ -219,6 +239,26 @@ async function captureFullPageLocally(tabId) {
     if (!stitchedCanvas) throw new Error('No tiles captured');
     return stitchedCanvas.toDataURL('image/png');
   } finally {
+    // Restore original positions of fixed/sticky elements
+    try {
+      await evalInTab(tabId, () => {
+        if (window.__bugshot_adjusted_elements__) {
+          for (const item of window.__bugshot_adjusted_elements__) {
+            try {
+              if (item.originalValue) {
+                item.element.style.setProperty('position', item.originalValue, item.originalPriority);
+              } else {
+                item.element.style.removeProperty('position');
+              }
+            } catch (e) {}
+          }
+          delete window.__bugshot_adjusted_elements__;
+        }
+      });
+    } catch (restoreErr) {
+      // ignore restoration errors
+    }
+
     try {
       await scrollTo(originalScrollY);
     } catch (restoreErr) {
