@@ -84,18 +84,23 @@ async function captureFullPage(tabId, sendResponse) {
 
     // Temporarily adjust position of fixed and sticky elements to prevent repetition
     await evalInTab(tabId, () => {
-      window.__bugshot_adjusted_elements__ = [];
       const elements = document.querySelectorAll('*');
+      const excludedTags = new Set(['span', 'a', 'p', 'i', 'b', 'strong', 'code', 'pre', 'img', 'svg', 'path', 'button', 'input', 'select', 'option', 'label', 'li', 'ul', 'ol', 'td', 'tr', 'th', 'tbody', 'thead', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr']);
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
+        if (excludedTags.has(el.tagName.toLowerCase())) continue;
         try {
           const style = window.getComputedStyle(el);
           if (style.position === 'fixed' || style.position === 'sticky') {
-            window.__bugshot_adjusted_elements__.push({
-              element: el,
-              originalValue: el.style.getPropertyValue('position'),
-              originalPriority: el.style.getPropertyPriority('position')
-            });
+            el.setAttribute('data-bugshot-org-pos', style.position);
+            const inlinePos = el.style.getPropertyValue('position');
+            if (inlinePos) {
+              el.setAttribute('data-bugshot-org-inline-pos', inlinePos);
+              const inlinePriority = el.style.getPropertyPriority('position');
+              if (inlinePriority) {
+                el.setAttribute('data-bugshot-org-inline-priority', inlinePriority);
+              }
+            }
             el.style.setProperty('position', style.position === 'fixed' ? 'absolute' : 'static', 'important');
           }
         } catch (e) {}
@@ -115,10 +120,14 @@ async function captureFullPage(tabId, sendResponse) {
       for (let i = 0; i < attempts; i++) {
         try {
           const dataUrl = await new Promise((res, rej) => {
-            chrome.tabs.captureVisibleTab(null, { format: 'png' }, (d) => {
-              if (chrome.runtime.lastError) rej(new Error(chrome.runtime.lastError.message));
-              else res(d);
-            });
+            try {
+              chrome.tabs.captureVisibleTab(null, { format: 'png' }, (d) => {
+                if (chrome.runtime.lastError) rej(new Error(chrome.runtime.lastError.message));
+                else res(d);
+              });
+            } catch (err) {
+              rej(err);
+            }
           });
           return dataUrl;
         } catch (err) {
@@ -151,17 +160,21 @@ async function captureFullPage(tabId, sendResponse) {
 
     // Restore elements and scroll
     await evalInTab(tabId, () => {
-      if (window.__bugshot_adjusted_elements__) {
-        for (const item of window.__bugshot_adjusted_elements__) {
-          try {
-            if (item.originalValue) {
-              item.element.style.setProperty('position', item.originalValue, item.originalPriority);
-            } else {
-              item.element.style.removeProperty('position');
-            }
-          } catch (e) {}
-        }
-        delete window.__bugshot_adjusted_elements__;
+      const elements = document.querySelectorAll('[data-bugshot-org-pos]');
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        try {
+          const orgInlinePos = el.getAttribute('data-bugshot-org-inline-pos');
+          const orgInlinePriority = el.getAttribute('data-bugshot-org-inline-priority');
+          if (orgInlinePos) {
+            el.style.setProperty('position', orgInlinePos, orgInlinePriority || '');
+          } else {
+            el.style.removeProperty('position');
+          }
+        } catch (e) {}
+        el.removeAttribute('data-bugshot-org-pos');
+        el.removeAttribute('data-bugshot-org-inline-pos');
+        el.removeAttribute('data-bugshot-org-inline-priority');
       }
     });
     hasAdjusted = false;
@@ -175,17 +188,21 @@ async function captureFullPage(tabId, sendResponse) {
     if (hasAdjusted) {
       try {
         await evalInTab(tabId, () => {
-          if (window.__bugshot_adjusted_elements__) {
-            for (const item of window.__bugshot_adjusted_elements__) {
-              try {
-                if (item.originalValue) {
-                  item.element.style.setProperty('position', item.originalValue, item.originalPriority);
-                } else {
-                  item.element.style.removeProperty('position');
-                }
-              } catch (e) {}
-            }
-            delete window.__bugshot_adjusted_elements__;
+          const elements = document.querySelectorAll('[data-bugshot-org-pos]');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            try {
+              const orgInlinePos = el.getAttribute('data-bugshot-org-inline-pos');
+              const orgInlinePriority = el.getAttribute('data-bugshot-org-inline-priority');
+              if (orgInlinePos) {
+                el.style.setProperty('position', orgInlinePos, orgInlinePriority || '');
+              } else {
+                el.style.removeProperty('position');
+              }
+            } catch (e) {}
+            el.removeAttribute('data-bugshot-org-pos');
+            el.removeAttribute('data-bugshot-org-inline-pos');
+            el.removeAttribute('data-bugshot-org-inline-priority');
           }
         });
       } catch (e) {}

@@ -2,14 +2,14 @@
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let screenshotDataUrl = null;
-let baseImageUrl      = null;
-let systemInfo        = null;
-let activeTool        = 'pen';
-let activeColor       = '#FF3B3B';
-let severity          = 'medium';
-let isDrawing         = false;
-let drawStart         = { x: 0, y: 0 };
-let undoStack         = [];
+let baseImageUrl = null;
+let systemInfo = null;
+let activeTool = 'pen';
+let activeColor = '#FF3B3B';
+let severity = 'medium';
+let isDrawing = false;
+let drawStart = { x: 0, y: 0 };
+let undoStack = [];
 let canvas, ctx;
 
 // Console screenshot
@@ -17,15 +17,15 @@ let consoleScreenshotUrl = null;
 let consoleCanvas, consoleCtx;
 
 // Crop state
-let cropMode    = false;
+let cropMode = false;
 let cropDragging = false;
-let cropStart   = { x: 0, y: 0 };
-let cropRect    = null; // { x, y, w, h } in canvas pixels
+let cropStart = { x: 0, y: 0 };
+let cropRect = null; // { x, y, w, h } in canvas pixels
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   canvas = document.getElementById('screenshot-canvas');
-  ctx    = canvas.getContext('2d', { willReadFrequently: true });
+  ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   bindCapture();
   bindAnnotationTools();
@@ -140,7 +140,7 @@ function stitchTiles(tiles, pageHeight, viewportHeight) {
     const tileW = firstImg.width;
     const tileH = firstImg.height;
     const offscreen = document.createElement('canvas');
-    offscreen.width  = tileW;
+    offscreen.width = tileW;
     offscreen.height = pageHeight;
     const offCtx = offscreen.getContext('2d');
 
@@ -151,7 +151,7 @@ function stitchTiles(tiles, pageHeight, viewportHeight) {
         // Each tile was captured at scroll position tile.y
         // But the last tile may overlap — clip to avoid duplication
         const destY = tile.y;
-        const srcH  = Math.min(tileH, pageHeight - tile.y);
+        const srcH = Math.min(tileH, pageHeight - tile.y);
         offCtx.drawImage(img, 0, 0, tileW, srcH, 0, destY, tileW, srcH);
         loaded++;
         if (loaded === tiles.length) {
@@ -168,19 +168,26 @@ async function captureFullPageLocally(tabId) {
   const scrollInfo = await evalInTab(tabId, () => ({
     scrollY: window.scrollY,
     pageHeight: document.documentElement.scrollHeight,
-    viewportHeight: window.innerHeight
+    viewportHeight: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio || 1
   }));
 
   const originalScrollY = scrollInfo?.scrollY || 0;
   const pageHeight = scrollInfo?.pageHeight || 0;
   const viewportHeight = scrollInfo?.viewportHeight || 0;
+  const dpr = scrollInfo?.devicePixelRatio || 1;
+  
   if (!pageHeight || !viewportHeight) throw new Error('Unable to read page dimensions');
 
   const captureVisibleTab = () => new Promise((resolve, reject) => {
-    chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
-      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-      else resolve(dataUrl);
-    });
+    try {
+      chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(dataUrl);
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 
   const scrollTo = (y) => evalInTab(tabId, (targetY) => {
@@ -196,27 +203,33 @@ async function captureFullPageLocally(tabId) {
   try {
     // Temporarily adjust position of fixed and sticky elements to prevent repetition
     await evalInTab(tabId, () => {
-      window.__bugshot_adjusted_elements__ = [];
       const elements = document.querySelectorAll('*');
+      const excludedTags = new Set(['span', 'a', 'p', 'i', 'b', 'strong', 'code', 'pre', 'img', 'svg', 'path', 'button', 'input', 'select', 'option', 'label', 'li', 'ul', 'ol', 'td', 'tr', 'th', 'tbody', 'thead', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr']);
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
+        if (excludedTags.has(el.tagName.toLowerCase())) continue;
         try {
           const style = window.getComputedStyle(el);
           if (style.position === 'fixed' || style.position === 'sticky') {
-            window.__bugshot_adjusted_elements__.push({
-              element: el,
-              originalValue: el.style.getPropertyValue('position'),
-              originalPriority: el.style.getPropertyPriority('position')
-            });
+            el.setAttribute('data-bugshot-org-pos', style.position);
+            const inlinePos = el.style.getPropertyValue('position');
+            if (inlinePos) {
+              el.setAttribute('data-bugshot-org-inline-pos', inlinePos);
+              const inlinePriority = el.style.getPropertyPriority('position');
+              if (inlinePriority) {
+                el.setAttribute('data-bugshot-org-inline-priority', inlinePriority);
+              }
+            }
             el.style.setProperty('position', style.position === 'fixed' ? 'absolute' : 'static', 'important');
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     });
 
     for (let y = 0; y < pageHeight; y += viewportHeight) {
-      await scrollTo(y);
-      await wait(120);
+      const targetY = Math.min(y, pageHeight - viewportHeight);
+      await scrollTo(targetY);
+      await wait(150);
 
       const dataUrl = await captureVisibleTab();
       const image = await loadImage(dataUrl);
@@ -225,13 +238,18 @@ async function captureFullPageLocally(tabId) {
         tileWidth = image.width;
         stitchedCanvas = document.createElement('canvas');
         stitchedCanvas.width = tileWidth;
-        stitchedCanvas.height = pageHeight;
+        stitchedCanvas.height = Math.round(pageHeight * dpr);
         stitchedCtx = stitchedCanvas.getContext('2d');
       }
 
-      const destY = y;
-      const srcHeight = Math.min(image.height, pageHeight - y);
-      stitchedCtx.drawImage(image, 0, 0, tileWidth, srcHeight, 0, destY, tileWidth, srcHeight);
+      const overlapY = y - targetY;
+      const sy = Math.round(overlapY * dpr);
+      const dy = Math.round(y * dpr);
+      const remainingHeight = pageHeight - y;
+      const drawHeight = Math.min(viewportHeight, remainingHeight);
+      const sh = Math.round(drawHeight * dpr);
+
+      stitchedCtx.drawImage(image, 0, sy, tileWidth, sh, 0, dy, tileWidth, sh);
 
       await wait(160);
     }
@@ -242,17 +260,21 @@ async function captureFullPageLocally(tabId) {
     // Restore original positions of fixed/sticky elements
     try {
       await evalInTab(tabId, () => {
-        if (window.__bugshot_adjusted_elements__) {
-          for (const item of window.__bugshot_adjusted_elements__) {
-            try {
-              if (item.originalValue) {
-                item.element.style.setProperty('position', item.originalValue, item.originalPriority);
-              } else {
-                item.element.style.removeProperty('position');
-              }
-            } catch (e) {}
-          }
-          delete window.__bugshot_adjusted_elements__;
+        const elements = document.querySelectorAll('[data-bugshot-org-pos]');
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          try {
+            const orgInlinePos = el.getAttribute('data-bugshot-org-inline-pos');
+            const orgInlinePriority = el.getAttribute('data-bugshot-org-inline-priority');
+            if (orgInlinePos) {
+              el.style.setProperty('position', orgInlinePos, orgInlinePriority || '');
+            } else {
+              el.style.removeProperty('position');
+            }
+          } catch (e) { }
+          el.removeAttribute('data-bugshot-org-pos');
+          el.removeAttribute('data-bugshot-org-inline-pos');
+          el.removeAttribute('data-bugshot-org-inline-priority');
         }
       });
     } catch (restoreErr) {
@@ -300,13 +322,13 @@ function loadScreenshotToCanvas(dataUrl) {
   img.onload = () => {
     const maxW = 420;
     const scale = maxW / img.width;
-    canvas.width  = img.width;
+    canvas.width = img.width;
     canvas.height = img.height;
-    canvas.style.width  = maxW + 'px';
+    canvas.style.width = maxW + 'px';
     canvas.style.height = Math.round(img.height * scale) + 'px';
     ctx.drawImage(img, 0, 0);
 
-    baseImageUrl      = dataUrl;
+    baseImageUrl = dataUrl;
     screenshotDataUrl = canvas.toDataURL('image/png');
     undoStack = [];
     saveUndo();
@@ -324,7 +346,7 @@ function loadScreenshotToCanvas(dataUrl) {
 // ─── Console Capture ─────────────────────────────────────────────────────────
 function bindConsoleCapture() {
   consoleCanvas = document.getElementById('console-canvas');
-  consoleCtx    = consoleCanvas.getContext('2d', { willReadFrequently: true });
+  consoleCtx = consoleCanvas.getContext('2d', { willReadFrequently: true });
 
   document.getElementById('btn-capture-console').addEventListener('click', () => {
     const btn = document.getElementById('btn-capture-console');
@@ -366,9 +388,9 @@ function bindConsoleCapture() {
           img.onload = () => {
             const maxW = 392;
             const scale = maxW / img.width;
-            consoleCanvas.width  = img.width;
+            consoleCanvas.width = img.width;
             consoleCanvas.height = img.height;
-            consoleCanvas.style.width  = maxW + 'px';
+            consoleCanvas.style.width = maxW + 'px';
             consoleCanvas.style.height = Math.round(img.height * scale) + 'px';
             consoleCtx.drawImage(img, 0, 0);
             consoleScreenshotUrl = consoleCanvas.toDataURL('image/png');
@@ -417,15 +439,15 @@ function bindAnnotationTools() {
 
   canvas.addEventListener('mousedown', onDrawStart);
   canvas.addEventListener('mousemove', onDrawMove);
-  canvas.addEventListener('mouseup',   onDrawEnd);
+  canvas.addEventListener('mouseup', onDrawEnd);
   canvas.addEventListener('mouseleave', onDrawEnd);
 }
 
 function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: (e.clientX - rect.left) * (canvas.width  / rect.width),
-    y: (e.clientY - rect.top)  * (canvas.height / rect.height)
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
   };
 }
 
@@ -481,7 +503,7 @@ function drawArrow(x1, y1, x2, y2) {
   const headLen = 16;
   const angle = Math.atan2(y2 - y1, x2 - x1);
   ctx.strokeStyle = activeColor;
-  ctx.fillStyle   = activeColor;
+  ctx.fillStyle = activeColor;
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -524,7 +546,7 @@ function clearAnnotations() {
 
 // ─── Crop ─────────────────────────────────────────────────────────────────────
 function bindCrop() {
-  const btn     = document.getElementById('btn-crop-mode');
+  const btn = document.getElementById('btn-crop-mode');
   const overlay = document.getElementById('crop-overlay');
   const cropBox = document.getElementById('crop-box');
 
@@ -544,12 +566,12 @@ function bindCrop() {
   overlay.addEventListener('mousedown', (e) => {
     if (!cropMode) return;
     const rect = overlay.getBoundingClientRect();
-    cropStart    = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    cropStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     cropDragging = true;
     cropBox.style.display = 'block';
-    cropBox.style.left   = cropStart.x + 'px';
-    cropBox.style.top    = cropStart.y + 'px';
-    cropBox.style.width  = '0px';
+    cropBox.style.left = cropStart.x + 'px';
+    cropBox.style.top = cropStart.y + 'px';
+    cropBox.style.width = '0px';
     cropBox.style.height = '0px';
   });
 
@@ -562,12 +584,12 @@ function bindCrop() {
     const y = Math.min(cy, cropStart.y);
     const w = Math.abs(cx - cropStart.x);
     const h = Math.abs(cy - cropStart.y);
-    cropBox.style.left   = x + 'px';
-    cropBox.style.top    = y + 'px';
-    cropBox.style.width  = w + 'px';
+    cropBox.style.left = x + 'px';
+    cropBox.style.top = y + 'px';
+    cropBox.style.width = w + 'px';
     cropBox.style.height = h + 'px';
     // Store in canvas pixel coords
-    const scaleX = canvas.width  / rect.width;
+    const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     cropRect = { x: x * scaleX, y: y * scaleY, w: w * scaleX, h: h * scaleY };
   });
@@ -583,7 +605,7 @@ function bindCrop() {
 function applyCrop() {
   const { x, y, w, h } = cropRect;
   const cropped = ctx.getImageData(x, y, w, h);
-  canvas.width  = w;
+  canvas.width = w;
   canvas.height = h;
   ctx.putImageData(cropped, 0, 0);
   const croppedUrl = canvas.toDataURL('image/png');
@@ -594,16 +616,16 @@ function applyCrop() {
   saveUndo();
   // Resize display
   const maxW = 420;
-  canvas.style.width  = maxW + 'px';
+  canvas.style.width = maxW + 'px';
   canvas.style.height = Math.round(h * (maxW / w)) + 'px';
   exitCropMode();
   showToast('Cropped', 'success');
 }
 
 function exitCropMode() {
-  cropMode     = false;
+  cropMode = false;
   cropDragging = false;
-  cropRect     = null;
+  cropRect = null;
   document.getElementById('crop-overlay').style.display = 'none';
   document.getElementById('btn-crop-mode').classList.remove('active');
 }
@@ -658,10 +680,10 @@ function renderMeta() {
     // Small extra delay to let devtools page finish its eval + push cycle
     setTimeout(() => {
       chrome.runtime.sendMessage({ type: 'GET_STORED_DEVTOOLS_DATA' }, (devData) => {
-        const dtErrors  = devData?.consoleLogs  || [];
+        const dtErrors = devData?.consoleLogs || [];
         const dtNetwork = devData?.networkFails || [];
-        const ssErrors  = systemInfo.errors     || [];
-        const ssNetwork = systemInfo.network    || [];
+        const ssErrors = systemInfo.errors || [];
+        const ssNetwork = systemInfo.network || [];
 
         const mergeErrors = [...dtErrors, ...ssErrors]
           .filter((e, i, arr) => arr.findIndex(x => x.msg === e.msg) === i)
@@ -687,7 +709,7 @@ function renderMeta() {
           }).join('');
         }
 
-        systemInfo._mergedErrors  = mergeErrors;
+        systemInfo._mergedErrors = mergeErrors;
         systemInfo._mergedNetwork = mergeNetwork;
       });
     }, 500);
@@ -695,18 +717,18 @@ function renderMeta() {
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function parseUA(ua) {
   let browser = 'Unknown', os = 'Unknown';
-  if (ua.includes('Chrome'))  browser = 'Chrome '  + (ua.match(/Chrome\/([\d.]+)/)?.[1]  || '');
+  if (ua.includes('Chrome')) browser = 'Chrome ' + (ua.match(/Chrome\/([\d.]+)/)?.[1] || '');
   else if (ua.includes('Firefox')) browser = 'Firefox ' + (ua.match(/Firefox\/([\d.]+)/)?.[1] || '');
-  else if (ua.includes('Safari'))  browser = 'Safari';
+  else if (ua.includes('Safari')) browser = 'Safari';
   if (ua.includes('Windows')) os = 'Windows';
-  else if (ua.includes('Mac'))    os = 'macOS';
-  else if (ua.includes('Linux'))  os = 'Linux';
-  else if (ua.includes('Android'))os = 'Android';
+  else if (ua.includes('Mac')) os = 'macOS';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
   else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
   return { browser, os };
 }
@@ -716,14 +738,14 @@ function truncate(str, n) {
 }
 
 function buildMarkdown() {
-  const title    = document.getElementById('bug-title').value.trim()    || 'Untitled Bug';
-  const steps    = document.getElementById('bug-steps').value.trim();
+  const title = document.getElementById('bug-title').value.trim() || 'Untitled Bug';
+  const steps = document.getElementById('bug-steps').value.trim();
   const expected = document.getElementById('bug-expected').value.trim();
-  const actual   = document.getElementById('bug-actual').value.trim();
-  const ua       = parseUA(systemInfo?.userAgent || '');
-  const sevLabel = { low:'🟢 Low', medium:'🟡 Medium', high:'🟠 High', critical:'🔴 Critical' }[severity];
+  const actual = document.getElementById('bug-actual').value.trim();
+  const ua = parseUA(systemInfo?.userAgent || '');
+  const sevLabel = { low: '🟢 Low', medium: '🟡 Medium', high: '🟠 High', critical: '🔴 Critical' }[severity];
 
-  const errors  = (systemInfo?._mergedErrors  || systemInfo?.errors  || []).map(e => `- ${e.msg}`).join('\n');
+  const errors = (systemInfo?._mergedErrors || systemInfo?.errors || []).map(e => `- ${e.msg}`).join('\n');
   const network = (systemInfo?._mergedNetwork || systemInfo?.network || []).map(n => `- \`${n.status || 'ERR'} ${n.method} ${n.url}\``).join('\n');
 
   return `## Bug Report: ${title}
@@ -754,7 +776,7 @@ ${actual || '_Not provided_'}
 | Viewport | ${systemInfo?.viewportSize || 'unknown'} |
 | Timestamp | ${systemInfo?.timestamp || new Date().toISOString()} |
 
-${errors  ? `### Console Errors\n${errors}\n`  : ''}
+${errors ? `### Console Errors\n${errors}\n` : ''}
 ${network ? `### Network Failures\n${network}\n` : ''}
 ---
 *Filed via BugShot Chrome Extension*`;
@@ -775,7 +797,7 @@ async function submitGitHub() {
   }
 
   const body = buildMarkdown();
-  const btn  = document.getElementById('btn-submit-github');
+  const btn = document.getElementById('btn-submit-github');
   btn.disabled = true;
   btn.textContent = screenshotDataUrl ? 'Uploading screenshot...' : 'Submitting...';
 
@@ -814,12 +836,12 @@ async function loadSettings() {
   const { ghToken, ghOwner, ghRepo } = await getSettings();
   if (ghToken) document.getElementById('gh-token').value = ghToken;
   if (ghOwner) document.getElementById('gh-owner').value = ghOwner;
-  if (ghRepo)  document.getElementById('gh-repo').value  = ghRepo;
+  if (ghRepo) document.getElementById('gh-repo').value = ghRepo;
 }
 function saveSettings() {
   const token = document.getElementById('gh-token').value.trim();
   const owner = document.getElementById('gh-owner').value.trim();
-  const repo  = document.getElementById('gh-repo').value.trim();
+  const repo = document.getElementById('gh-repo').value.trim();
   chrome.storage.local.set({ ghToken: token, ghOwner: owner, ghRepo: repo }, () => {
     document.getElementById('settings-status').textContent = 'Saved.';
     setTimeout(() => { document.getElementById('settings-status').textContent = ''; showStep('step-capture'); }, 1000);
@@ -838,6 +860,6 @@ function showStep(id) {
 function showToast(msg, type = '') {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
-  toast.className   = 'toast show ' + type;
+  toast.className = 'toast show ' + type;
   setTimeout(() => { toast.className = 'toast'; }, 3000);
 }
