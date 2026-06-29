@@ -40,7 +40,9 @@ BugShot is a Chrome extension that lets developers capture, annotate, and file b
 - [Permissions Used](#permissions-used)
 
 ---
-
+## Demo
+![BugShot Demo](screenshots/Bugshot.gif)
+---
 ## Visual Overview
 
 ### 1. Capture and Annotate
